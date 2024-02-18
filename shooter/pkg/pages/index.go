@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+    "math"
 
 	"github.com/labstack/echo/v4"
 )
@@ -269,7 +270,7 @@ func Index(c echo.Context) error {
     c.Logger().Error("charts", len(charts))
 
     return c.Render(200, "index.html", Page {
-        Ratio: float64(overUnderFlows) / (float64(overUnderFlows) + float64(tickOnTime)),
+        Ratio: math.Floor((float64(overUnderFlows) / (float64(overUnderFlows) + float64(tickOnTime)) * 100)*100/100),
         ErrorMsg: "",
         Charts: charts,
         File: file,

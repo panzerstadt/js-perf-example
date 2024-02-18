@@ -8,7 +8,7 @@
 {{ block "file-display" . }}
     {{ if . }}
         {{ if .Counters }}
-            <p>Ratio: {{ .Ratio }}</p>
+            <p>{{ .Ratio }}% fail rate (should be <25%)</p>
             <ul>
                 {{ range $key, $value := .Counters }}
                    <li><strong>{{ $key }}</strong>: {{ $value }}</li>
