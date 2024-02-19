@@ -131,7 +131,7 @@ async function playGame(p1: WebSocket, p2: WebSocket) {
   do {
     // state checking / clean up
 
-    let ticks = await gameTicker(); // 60 fps * 1000 games = number of promises
+    let ticks = await gameTicker(); // 60 fps * 1000 games (* ~1000 extra sleep promises inside gameTicker) = ~120k number of promises PER SECOND
     ticksTotal += ticks;
     while (ticks > 0) {
       if (ticks > 16) {
