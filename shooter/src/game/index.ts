@@ -2,46 +2,9 @@ import { getLogger } from "../logger";
 import WebSocket from "ws";
 import { Game } from "./game";
 import { Writer, getWriter } from "./data-writer";
+import { getTimer, ticker } from "./ticker";
 
 const FPS = 1000 / 60;
-
-function ticker(rate: number, writer: Writer) {
-  let next = Date.now() + rate;
-  let previousNow = 0;
-
-  return async function tickRunner() {
-    const now = Date.now();
-    const interval = now - previousNow;
-
-    if (previousNow !== 0) {
-      writer.write("tickInterval", interval);
-      if (interval > rate + 1) {
-        writer.count("tickIntervalOverrun");
-      } else if (interval < Math.floor(rate - 1)) {
-        writer.count("tickIntervalUnderrun");
-      } else {
-        writer.count("tickOnTime");
-      }
-    }
-
-    let flooredNext = Math.floor(next);
-    const remaining = flooredNext - now;
-
-    if (remaining > 0) {
-      await new Promise((resolve) => setTimeout(resolve, remaining));
-    }
-
-    const endNow = Date.now();
-    const extras = endNow - flooredNext;
-
-    next = next + rate;
-    previousNow = now;
-
-    writer.write("tickRuntime", endNow - now);
-
-    return extras + remaining;
-  };
-}
 
 async function waitForOpen(socket: WebSocket): Promise<void> {
   return new Promise(function waitForOpen(resolve, reject) {
@@ -128,10 +91,12 @@ async function playGame(p1: WebSocket, p2: WebSocket) {
   const game = new Game(100);
   let ticksTotal = 0;
 
-  do {
-    // state checking / clean up
+  let lastRanTime = Date.now();
+  function run() {
+    const now = Date.now();
+    let ticks = now - lastRanTime;
+    lastRanTime = now;
 
-    let ticks = await gameTicker(); // 60 fps * 1000 games (* ~1000 extra sleep promises inside gameTicker) = ~120k number of promises PER SECOND
     ticksTotal += ticks;
     while (ticks > 0) {
       if (ticks > 16) {
@@ -157,51 +122,60 @@ async function playGame(p1: WebSocket, p2: WebSocket) {
 
     s1.messages = [];
     s2.messages = [];
-  } while (!game.ended && !s1.close && !s2.close && !s1.error && !s2.error);
 
-  const stopped1 = s1.close || s1.error;
-  const stopped2 = s2.close || s2.error;
-  const [stats1, stats2] = game.gameStats();
-
-  // no need to do anything, both somehow stopped
-  if (stopped1 && stopped2) {
-  } else if (stopped1) {
-    p2.send(
-      JSON.stringify({
-        type: "stop",
-        errorMsg: "Opponent disconnected",
-        ...stats2,
-      })
-    );
-  } else if (stopped2) {
-    p1.send(
-      JSON.stringify({
-        type: "stop",
-        errorMsg: "Opponent disconnected",
-        ...stats1,
-      })
-    );
-  } else {
-    p1.send(
-      JSON.stringify({
-        type: "stop",
-        ...stats1,
-      })
-    );
-    p2.send(
-      JSON.stringify({
-        type: "stop",
-        ...stats2,
-      })
-    );
+    if (game.ended || s1.close || s2.close || s1.error || s2.error) {
+      finish();
+    } else {
+      getTimer().add(run, gameTicker());
+    }
   }
+  run();
 
-  gamesPlayed++;
-  if (gamesPlayed % 100 == 0) {
-    getLogger().error(`Played ${gamesPlayed} games`);
+  function finish() {
+    const stopped1 = s1.close || s1.error;
+    const stopped2 = s2.close || s2.error;
+    const [stats1, stats2] = game.gameStats();
+
+    // no need to do anything, both somehow stopped
+    if (stopped1 && stopped2) {
+    } else if (stopped1) {
+      p2.send(
+        JSON.stringify({
+          type: "stop",
+          errorMsg: "Opponent disconnected",
+          ...stats2,
+        })
+      );
+    } else if (stopped2) {
+      p1.send(
+        JSON.stringify({
+          type: "stop",
+          errorMsg: "Opponent disconnected",
+          ...stats1,
+        })
+      );
+    } else {
+      p1.send(
+        JSON.stringify({
+          type: "stop",
+          ...stats1,
+        })
+      );
+      p2.send(
+        JSON.stringify({
+          type: "stop",
+          ...stats2,
+        })
+      );
+    }
+
+    gamesPlayed++;
+    if (gamesPlayed % 100 == 0) {
+      getLogger().error(`Played ${gamesPlayed} games`);
+    }
+
+    getWriter().count("games-played");
   }
-
-  getWriter().count("games-played");
 }
 
 export function createGameRunner() {
