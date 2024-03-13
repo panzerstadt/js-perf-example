@@ -11,7 +11,7 @@
     "start:server-inspect": "tsc && node --inspect dist/src/server.js",
     "start:client": "cargo run --release --",
     "start:viz": "go run cmd/main.go",
-    "start:testing": "concurrently -n server,client -c bgYellow,bgCyan \"npm run start:server-inspect -- --logPath /tmp/testing\" \"npm run start:client -- -q 1000 -g 100000 -t 2\"",
+    "start:testing": "concurrently -n server,client -c bgYellow,bgCyan \"npm run start:server-inspect -- --logPath /tmp/testing\" \"npm run start:client -- -q 2000 -g 100000 -t 2\"",
     "start:500": "concurrently -n server,client -c bgYellow,bgCyan \"npm run start:server -- --logPath /tmp/m-500\" \"npm run start:client -- -q 500 -g 100000 -t 2\"",
     "start:1000": "concurrently -n server,client -c bgYellow,bgCyan \"npm run start:server -- --logPath /tmp/m-1000\" \"npm run start:client -- -q 1000 -g 100000 -t 2\"",
     "start:2000": "concurrently -n server,client -c bgYellow,bgCyan \"npm run start:server -- --logPath /tmp/m-2000\" \"npm run start:client -- -q 2000 -g 100000 -t 2\"",
