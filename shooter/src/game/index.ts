@@ -6,16 +6,30 @@ import { getTimer, ticker } from "./ticker";
 
 const FPS = 1000 / 60;
 
-async function waitForOpen(socket: WebSocket): Promise<void> {
-  return new Promise(function waitForOpen(resolve, reject) {
-    if (socket.readyState !== WebSocket.OPEN) {
-      socket.once("open", resolve);
-      socket.once("error", reject);
-    } else {
-      resolve();
-    }
-  });
-}
+type WS = {
+  send: (msg: string) => void;
+};
+
+const wsToState = new Map<WS, State>();
+export const onClose = (ws: WS) => {
+  const state = wsToState.get(ws);
+  if (!state) {
+    return;
+  }
+  state.close = true;
+};
+export const onMessage = (ws: WS, msg: string) => {
+  const state = wsToState.get(ws);
+  if (!state) {
+    return;
+  }
+  try {
+    state.messages.push(JSON.parse(msg) as Message);
+  } catch (e) {
+    console.error("ERROR", e);
+    state.error = true;
+  }
+};
 
 type State = {
   messages: Message[];
@@ -49,44 +63,17 @@ type Fire = {
 
 type Message = Stop | Start | Fire;
 
-function onMessage(state: State) {
-  return function onMessage(msg: string | Buffer) {
-    try {
-      state.messages.push(JSON.parse(msg.toString()) as Message);
-    } catch (e) {
-      console.error("ERROR", e);
-      state.error = true;
-    }
-  };
-}
-
 let gamesPlayed = 0;
-async function playGame(p1: WebSocket, p2: WebSocket) {
-  try {
-    await Promise.all([waitForOpen(p1), waitForOpen(p2)]);
-  } catch (e) {
-    // handle error
-  }
-
+async function playGame(p1: WS, p2: WS) {
   p1.send(JSON.stringify({ type: "start" }));
   p2.send(JSON.stringify({ type: "start" }));
 
   const s1 = createState();
   const s2 = createState();
+  wsToState.set(p1, s1);
+  wsToState.set(p2, s2);
 
-  p1.on("message", onMessage(s1));
-  p2.on("message", onMessage(s2));
-  p1.on("close", () => (s1.close = true));
-  p2.on("close", () => (s2.close = true));
-  p1.on("error", (e) => {
-    console.error("p1 ERROR", e);
-    s1.error = true;
-  });
-  p2.on("error", (e) => {
-    console.error("p2 ERROR", e);
-    s2.error = true;
-  });
-
+  const timer = getTimer();
   const gameTicker = ticker(FPS, getWriter());
   const game = new Game(100);
   let ticksTotal = 0;
@@ -126,7 +113,7 @@ async function playGame(p1: WebSocket, p2: WebSocket) {
     if (game.ended || s1.close || s2.close || s1.error || s2.error) {
       finish();
     } else {
-      getTimer().add(run, gameTicker());
+      timer.add(run, gameTicker());
     }
   }
   run();
@@ -175,12 +162,14 @@ async function playGame(p1: WebSocket, p2: WebSocket) {
     }
 
     getWriter().count("games-played");
+    wsToState.delete(p1);
+    wsToState.delete(p2);
   }
 }
 
 export function createGameRunner() {
-  let waitingPlayer: WebSocket | undefined = undefined;
-  return function addPlayer(socket: WebSocket) {
+  let waitingPlayer: WS | undefined = undefined;
+  return function addPlayer(socket: WS) {
     if (!waitingPlayer) {
       waitingPlayer = socket;
       getLogger().info("Player 1 connected");
